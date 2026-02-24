@@ -1,0 +1,198 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Design tokens ───────────────────────────────────────────────────────── */
+:root {
+  --bg:          #07080e;
+  --surface:     #0c1120;
+  --surface2:    #131928;
+  --border:      rgba(255, 255, 255, 0.065);
+  --border-h:    rgba(245, 176, 20, 0.22);
+
+  --amber:       #f5b014;
+  --amber-dim:   rgba(245, 176, 20, 0.10);
+  --green:       #00e68a;
+  --red:         #ff3355;
+  --blue:        #3d8bff;
+
+  --text:        #d8dce8;
+  --muted:       #4a5272;
+  --faint:       rgba(255,255,255,0.04);
+
+  --font-barlow: 'Barlow Condensed', sans-serif;
+  --font-mono:   'JetBrains Mono', monospace;
+}
+
+/* ─── Base reset ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-barlow);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Subtle background grid ─────────────────────────────────────────────── */
+body {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ─── Card ───────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--border-h); }
+
+/* ─── Metric card ────────────────────────────────────────────────────────── */
+.metric-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  font-family: var(--font-barlow);
+}
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.1;
+  margin: 4px 0 2px;
+}
+.metric-value.amber { color: var(--amber); }
+.metric-value.green { color: var(--green); }
+.metric-value.red   { color: var(--red); }
+.metric-sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* ─── Section heading ────────────────────────────────────────────────────── */
+.section-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+/* ─── Badge ──────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-family: var(--font-barlow);
+}
+.badge-reactivo  { background: rgba(245,176,20,0.15); color: #f5b014; }
+.badge-onboarding{ background: rgba(61,139,255,0.15); color: #3d8bff; }
+.badge-proactivo { background: rgba(0,230,138,0.15);  color: #00e68a; }
+.badge-unknown   { background: rgba(74,82,114,0.25);  color: #7888aa; }
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: var(--surface); }
+::-webkit-scrollbar-thumb  { background: rgba(255,255,255,0.09); border-radius: 2px; }
+
+/* ─── Recharts overrides ─────────────────────────────────────────────────── */
+.recharts-cartesian-grid line { stroke: rgba(255,255,255,0.05) !important; }
+.recharts-text { fill: var(--muted) !important; font-family: var(--font-mono) !important; font-size: 10px !important; }
+.recharts-tooltip-wrapper { outline: none; }
+
+/* ─── Custom chart tooltip ───────────────────────────────────────────────── */
+.chart-tooltip {
+  background: #161e35;
+  border: 1px solid rgba(245,176,20,0.25);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.chart-tooltip .label { color: var(--muted); margin-bottom: 4px; font-size: 10px; letter-spacing: 0.1em; }
+.chart-tooltip .val   { color: var(--amber); font-size: 13px; }
+
+/* ─── Live feed entry animation ──────────────────────────────────────────── */
+@keyframes eventIn {
+  0%   { opacity: 0; transform: translateX(-5px); background: rgba(245,176,20,0.06); }
+  40%  { background: rgba(245,176,20,0.06); }
+  100% { opacity: 1; transform: translateX(0);     background: transparent; }
+}
+.event-enter { animation: eventIn 0.4s ease-out forwards; }
+
+/* ─── Live dot ───────────────────────────────────────────────────────────── */
+@keyframes livePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,230,138,0.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(0,230,138,0); }
+}
+.live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: livePulse 2s ease-in-out infinite;
+}
+.dead-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+/* ─── Table ──────────────────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--faint); }
+
+/* ─── Latency bar ────────────────────────────────────────────────────────── */
+.latency-bar-track {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 5px;
+}
+.latency-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--amber);
+  transition: width 0.6s ease;
+}
+
+/* ─── Fade in on mount ───────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.5s ease-out forwards; }

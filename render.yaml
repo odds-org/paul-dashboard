@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: paul-dashboard
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PAUL_AGENT_URL
+        value: http://paul-prod.eba-gjxwvw3i.us-east-1.elasticbeanstalk.com
+      - key: PAUL_API_KEY
+        sync: false   # Set manually in Render dashboard
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
