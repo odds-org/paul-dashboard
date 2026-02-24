@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3005",
     "build": "next build",
-    "start": "next start -p ${PORT:-3000}",
+    "start": "next start",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -13,6 +13,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.13.3"
+  },
+  "engines": {
+    "node": ">=18.17.0"
   },
   "devDependencies": {
     "@types/node": "^20",
