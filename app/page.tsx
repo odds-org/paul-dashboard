@@ -8,6 +8,7 @@ import {
 import type {
   StatsData, AnalyticsEvent, RequestsOverTimeRow,
   SkillRow, ToolRow, Latency, RecentRequest,
+  ConversationSession, ConversationMessage, SessionsResponse, ThreadResponse,
 } from '@/lib/types'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -388,6 +389,264 @@ function RecentTable({ rows }: { rows: RecentRequest[] }) {
   )
 }
 
+// ─── Conversations Panel ──────────────────────────────────────────────────────
+
+function ConversationsPanel({ liveEvents }: { liveEvents: AnalyticsEvent[] }) {
+  const [sessions, setSessions]       = useState<ConversationSession[]>([])
+  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [thread, setThread]           = useState<ConversationMessage[]>([])
+  const [loadingThread, setLoadingThread] = useState(false)
+
+  // Load sessions on mount + poll every 20s
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/conversations')
+      if (!res.ok) return
+      const data: SessionsResponse = await res.json()
+      setSessions(data.sessions ?? [])
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    fetchSessions()
+    const t = setInterval(fetchSessions, 20_000)
+    return () => clearInterval(t)
+  }, [fetchSessions])
+
+  // Inject new live events into sessions list in real-time
+  useEffect(() => {
+    if (!liveEvents.length) return
+    const latest = liveEvents[0]
+    if (!latest.messageIn && !latest.messageOut) return
+    setSessions(prev => {
+      const exists = prev.find(s => s.session_id === latest.sessionId)
+      if (exists) {
+        return prev.map(s => s.session_id !== latest.sessionId ? s : {
+          ...s,
+          last_message_at:  latest.createdAt,
+          message_count:    s.message_count + 1,
+          last_skill:       latest.skillActivated,
+          last_message_in:  latest.messageIn,
+          last_message_out: latest.messageOut,
+          last_duration_ms: latest.requestDurationMs,
+        })
+      }
+      // New session
+      return [{
+        session_id:       latest.sessionId,
+        user_id:          latest.userId,
+        started_at:       latest.createdAt,
+        last_message_at:  latest.createdAt,
+        message_count:    1,
+        last_skill:       latest.skillActivated,
+        last_message_in:  latest.messageIn,
+        last_message_out: latest.messageOut,
+        last_duration_ms: latest.requestDurationMs,
+      }, ...prev]
+    })
+    // If this session is open, append to thread
+    if (selectedSession === latest.sessionId && latest.messageIn) {
+      setThread(prev => [...prev, {
+        id:               Date.now(),
+        correlation_id:   latest.correlationId,
+        user_id:          latest.userId,
+        message_in:       latest.messageIn,
+        message_out:      latest.messageOut,
+        response_json:    null,
+        skill_used:       latest.skillActivated,
+        tool_calls_count: latest.toolCallsCount,
+        duration_ms:      latest.requestDurationMs,
+        created_at:       latest.createdAt,
+      }])
+    }
+  }, [liveEvents, selectedSession])
+
+  const openSession = async (sessionId: string) => {
+    if (selectedSession === sessionId) { setSelectedSession(null); setThread([]); return }
+    setSelectedSession(sessionId)
+    setLoadingThread(true)
+    setThread([])
+    try {
+      const res = await fetch(`/api/conversations?session=${encodeURIComponent(sessionId)}`)
+      if (!res.ok) return
+      const data: ThreadResponse = await res.json()
+      setThread(data.messages ?? [])
+    } finally {
+      setLoadingThread(false)
+    }
+  }
+
+  const fmtRelative = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime()
+    if (diff < 60_000) return 'ahora'
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
+    return `${Math.floor(diff / 86_400_000)}d`
+  }
+
+  return (
+    <div className="card" style={{ overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{
+        padding: '14px 20px 12px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <p className="section-title" style={{ marginBottom: 0 }}>Conversaciones</p>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>
+          {sessions.length} sesiones
+        </span>
+      </div>
+
+      {/* Sessions list */}
+      <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+        {sessions.length === 0 && (
+          <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 12, textAlign: 'center' }}>
+            Sin conversaciones todavía — aparecerán aquí al llegar
+          </div>
+        )}
+
+        {sessions.map(session => (
+          <div key={session.session_id}>
+            {/* Session row */}
+            <div
+              onClick={() => openSession(session.session_id)}
+              style={{
+                padding: '10px 20px',
+                borderBottom: '1px solid rgba(255,255,255,0.03)',
+                cursor: 'pointer',
+                background: selectedSession === session.session_id ? 'rgba(245,176,20,0.05)' : 'transparent',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { if (selectedSession !== session.session_id) (e.currentTarget as HTMLElement).style.background = 'var(--faint)' }}
+              onMouseLeave={e => { if (selectedSession !== session.session_id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+                {/* Expand arrow */}
+                <span style={{
+                  fontSize: 10, color: 'var(--muted)',
+                  transform: selectedSession === session.session_id ? 'rotate(90deg)' : 'none',
+                  transition: 'transform 0.2s', display: 'inline-block',
+                }}>▶</span>
+
+                {/* User */}
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text)' }}>
+                  {fmtUser(session.user_id)}
+                </span>
+
+                {/* Skill */}
+                <span className={skillClass(session.last_skill)}>
+                  {session.last_skill}
+                </span>
+
+                {/* Message count */}
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>
+                  {session.message_count} msg
+                </span>
+
+                {/* Time */}
+                <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>
+                  {fmtRelative(session.last_message_at)}
+                </span>
+              </div>
+
+              {/* Last message preview */}
+              <div style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {session.last_message_in && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0, marginTop: 1 }}>👤</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4,
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1,
+                      WebkitBoxOrient: 'vertical' as const }}>
+                      {session.last_message_in}
+                    </span>
+                  </div>
+                )}
+                {session.last_message_out && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 10, color: 'var(--amber)', flexShrink: 0, marginTop: 1 }}>🤖</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4,
+                      overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 1,
+                      WebkitBoxOrient: 'vertical' as const }}>
+                      {session.last_message_out}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Thread (expanded) */}
+            {selectedSession === session.session_id && (
+              <div style={{
+                background: 'rgba(0,0,0,0.25)',
+                borderBottom: '1px solid var(--border)',
+                padding: '12px 20px 12px 40px',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                {loadingThread && (
+                  <div style={{ color: 'var(--muted)', fontSize: 11, textAlign: 'center', padding: '8px 0' }}>
+                    Cargando conversación…
+                  </div>
+                )}
+                {thread.map((msg, i) => (
+                  <div key={msg.correlation_id ?? i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {/* Timestamp + skill */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--muted)' }}>
+                        {fmtTime(msg.created_at)}
+                      </span>
+                      <span className={skillClass(msg.skill_used)} style={{ fontSize: 9 }}>
+                        {msg.skill_used}
+                      </span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--muted)' }}>
+                        {fmtMs(msg.duration_ms)}
+                      </span>
+                    </div>
+
+                    {/* User message */}
+                    {msg.message_in && (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 11, flexShrink: 0, marginTop: 1 }}>👤</span>
+                        <div style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.07)',
+                          borderRadius: '4px 12px 12px 12px',
+                          padding: '6px 10px',
+                          fontSize: 12, lineHeight: 1.5, color: 'var(--text)',
+                          maxWidth: '85%',
+                        }}>
+                          {msg.message_in}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Paul response */}
+                    {msg.message_out && (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexDirection: 'row-reverse' }}>
+                        <span style={{ fontSize: 11, flexShrink: 0, marginTop: 1 }}>🤖</span>
+                        <div style={{
+                          background: 'rgba(245,176,20,0.08)',
+                          border: '1px solid rgba(245,176,20,0.15)',
+                          borderRadius: '12px 4px 12px 12px',
+                          padding: '6px 10px',
+                          fontSize: 12, lineHeight: 1.5, color: 'var(--text)',
+                          maxWidth: '85%',
+                        }}>
+                          {msg.message_out}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -597,6 +856,9 @@ export default function Dashboard() {
 
         {/* Recent Requests Table */}
         {mounted && <RecentTable rows={stats?.recentRequests ?? []} />}
+
+        {/* Conversations */}
+        {mounted && <ConversationsPanel liveEvents={liveEvents} />}
 
         {/* Footer */}
         <div style={{

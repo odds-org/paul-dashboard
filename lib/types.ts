@@ -64,4 +64,44 @@ export interface AnalyticsEvent {
   outputType:         string
   outputLength:       number
   createdAt:          string
+  messageIn:          string
+  messageOut:         string
+}
+
+// ─── Conversations ────────────────────────────────────────────────────────────
+
+export interface ConversationSession {
+  session_id:       string
+  user_id:          string
+  started_at:       string
+  last_message_at:  string
+  message_count:    number
+  last_skill:       string
+  last_message_in:  string
+  last_message_out: string
+  last_duration_ms: number
+}
+
+export interface ConversationMessage {
+  id:               number
+  correlation_id:   string
+  user_id:          string
+  message_in:       string
+  message_out:      string
+  response_json:    unknown
+  skill_used:       string
+  tool_calls_count: number
+  duration_ms:      number
+  created_at:       string
+}
+
+export interface SessionsResponse {
+  type:     'sessions'
+  sessions: ConversationSession[]
+}
+
+export interface ThreadResponse {
+  type:      'thread'
+  sessionId: string
+  messages:  ConversationMessage[]
 }
