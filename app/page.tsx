@@ -752,6 +752,14 @@ export default function Dashboard() {
           }}>
             Monitor
           </span>
+          <a href="/conversations" style={{
+            fontFamily: 'var(--font-barlow)', fontSize: 12, letterSpacing: '0.1em',
+            color: 'var(--amber)', textDecoration: 'none', padding: '4px 12px',
+            border: '1px solid rgba(245,176,20,0.3)', borderRadius: 4,
+            transition: 'all 0.15s',
+          }}>
+            💬 Jugadores
+          </a>
         </div>
 
         {/* Center: connection status */}

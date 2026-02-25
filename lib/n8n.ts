@@ -49,19 +49,53 @@ export async function fetchExecution(id: string): Promise<N8nExecution> {
   return res.json()
 }
 
+// ─── Message extraction helper ────────────────────────────────────────────────
+// n8n Respond nodes store the message in 3 different formats:
+//   1. json.output = '{"type":"text","data":{"message":"..."}}' (JSON string)
+//   2. json.output = {type:"text", data:{message:"..."}}       (JSON object)
+//   3. json.paulMessage = '{"type":"json","data":{"message":"..."}}' (JSON string)
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractMessageFromJson(json: Record<string, any>): string {
+  // Try paulMessage (reactivo path uses this key)
+  if (json.paulMessage) {
+    try {
+      const parsed = typeof json.paulMessage === 'string'
+        ? JSON.parse(json.paulMessage) : json.paulMessage
+      const msg = parsed?.data?.message
+      if (msg) return String(msg)
+    } catch { /* continue */ }
+  }
+
+  // Try output (onboarding + lives paths)
+  if (json.output !== undefined) {
+    try {
+      const parsed = typeof json.output === 'string'
+        ? JSON.parse(json.output) : json.output
+      const msg = parsed?.data?.message
+      if (msg) return String(msg)
+    } catch { /* continue */ }
+  }
+
+  // Try data.message directly
+  if (json.data?.message) return String(json.data.message)
+
+  return ''
+}
+
 // ─── Parse execution data ─────────────────────────────────────────────────────
 
 export interface ParsedExecution {
-  id:           string
-  status:       string
-  startedAt:    string
-  durationMs:   number
-  userId:       string
-  sessionId:    string
-  messageIn:    string
-  messageOut:   string
+  id:             string
+  status:         string
+  startedAt:      string
+  durationMs:     number
+  userId:         string
+  sessionId:      string
+  messageIn:      string
+  messageOut:     string
   skillActivated: string
-  errorOccurred: boolean
+  errorOccurred:  boolean
 }
 
 export function parseExecution(ex: N8nExecution): ParsedExecution {
@@ -91,16 +125,17 @@ export function parseExecution(ex: N8nExecution): ParsedExecution {
     }
   }
 
-  // Final response (try all Respond nodes)
+  // Final response — try all Respond nodes with fixed extraction
   let messageOut = ''
   const respondNodes = [
-    'Respond to Webhook4', 'Respond to Webhook5', 'Respond to Webhook3',
-    'Respond to Webhook2', 'Respond to Webhook1', 'Respond to Webhook',
+    'Respond to Webhook', 'Respond to Webhook1', 'Respond to Webhook2',
+    'Respond to Webhook3', 'Respond to Webhook4', 'Respond to Webhook5',
   ]
   for (const node of respondNodes) {
     const item = runData[node]?.[0]?.data?.main?.[0]?.[0]?.json
-    const msg  = (item?.data as any)?.message
-    if (msg) { messageOut = String(msg); break }
+    if (!item) continue
+    const msg = extractMessageFromJson(item)
+    if (msg) { messageOut = msg; break }
   }
 
   return {
