@@ -7,7 +7,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { fetchExecutions, fetchExecution, parseExecution } from '@/lib/n8n'
+import { fetchExecutions, fetchExecution, parseExecution } from '../../lib/n8n'
 
 export const config = { api: { bodyParser: false } }
 

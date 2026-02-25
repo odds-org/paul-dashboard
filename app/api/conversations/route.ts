@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { fetchExecutions, fetchExecution, parseExecution } from '@/lib/n8n'
+import { fetchExecutions, fetchExecution, parseExecution } from '../../../lib/n8n'
 
 export const dynamic = 'force-dynamic'
 
