@@ -1,72 +1,99 @@
 /**
- * SSE proxy — Pages Router API route (not App Router).
+ * SSE endpoint — polls n8n for new DoradoBet executions every 3s
+ * and streams them as analytics events to the dashboard.
  *
- * Pages Router gives us direct access to Node.js req/res, so we can use
- * res.write() + res.flush() for true server-sent events without buffering.
- *
- * The App Router's Response streaming buffers in production; Pages Router doesn't.
+ * n8n doesn't have native SSE, so we poll the executions API.
+ * For each new execution we fetch full data to get userId, message, skill.
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next'
+import { fetchExecutions, fetchExecution, parseExecution } from '@/lib/n8n'
 
-const PAUL_URL = process.env.PAUL_AGENT_URL ?? 'http://paul-prod.eba-gjxwvw3i.us-east-1.elasticbeanstalk.com'
-const API_KEY  = process.env.PAUL_API_KEY  ?? ''
-
-// Disable Next.js body parsing (not needed for GET SSE)
 export const config = { api: { bodyParser: false } }
 
+const POLL_INTERVAL_MS = 4000
+const HEARTBEAT_MS     = 30_000
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // SSE headers — flush immediately so the client knows the stream is open
   res.setHeader('Content-Type',      'text/event-stream')
   res.setHeader('Cache-Control',     'no-cache, no-transform')
   res.setHeader('Connection',        'keep-alive')
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
-  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
-  const dec = new TextDecoder()
-
-  const cleanup = () => {
-    reader?.cancel().catch(() => {})
-    res.end()
-  }
-
-  // Flush helper — works with both compression middleware and plain Node.js res
   const flush = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = res as any
     if (typeof r.flush === 'function') r.flush()
-    else if (r.socket?.flush) r.socket.flush()
   }
 
-  req.on('close',   cleanup)
-  req.on('aborted', cleanup)
+  let closed = false
+  req.on('close',   () => { closed = true })
+  req.on('aborted', () => { closed = true })
 
+  // Send connected event
+  res.write(`event: connected\ndata: {"source":"n8n","workflowId":"kfygpNYbIAvN6v8l"}\n\n`)
+  flush()
+
+  // Get latest execution ID as the starting point
+  let lastKnownId = 0
   try {
-    const upstream = await fetch(`${PAUL_URL}/events?key=${API_KEY}`, {
-      headers: { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
-    })
+    const { data } = await fetchExecutions(1)
+    if (data[0]) lastKnownId = parseInt(data[0].id, 10)
+  } catch { /* start from 0 */ }
 
-    if (!upstream.body) { res.end(); return }
+  // Poll loop
+  const pollTimer = setInterval(async () => {
+    if (closed || res.writableEnded) { clearInterval(pollTimer); clearInterval(hbTimer); return }
 
-    reader = upstream.body.getReader()
+    try {
+      const { data: executions } = await fetchExecutions(10)
+      const newExecs = executions.filter(ex => parseInt(ex.id, 10) > lastKnownId)
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      if (res.writableEnded) break
+      if (!newExecs.length) return
 
-      const text = dec.decode(value, { stream: true })
-      res.write(text)
-      flush()
-    }
-  } catch (err) {
-    if (!res.writableEnded) {
-      res.write('event: error\ndata: {}\n\n')
-      flush()
-    }
-  } finally {
-    reader?.releaseLock()
-    if (!res.writableEnded) res.end()
-  }
+      // Update last known
+      lastKnownId = Math.max(...newExecs.map(ex => parseInt(ex.id, 10)))
+
+      // Fetch full data for each new execution and emit
+      for (const ex of newExecs.reverse()) {
+        if (closed || res.writableEnded) break
+        try {
+          const full   = await fetchExecution(ex.id)
+          const parsed = parseExecution(full)
+
+          const event = {
+            correlationId:     parsed.id,
+            userId:            parsed.userId,
+            sessionId:         parsed.sessionId,
+            clientId:          'n8n',
+            firstMessage:      false,
+            hasMemoryFile:     false,
+            isFirstMsgOfDay:   false,
+            skillActivated:    parsed.skillActivated,
+            toolsUsed:         [] as string[],
+            toolCallsCount:    0,
+            webSearchUsed:     false,
+            requestDurationMs: parsed.durationMs,
+            errorOccurred:     parsed.errorOccurred,
+            outputType:        'text',
+            outputLength:      parsed.messageOut.length,
+            createdAt:         parsed.startedAt,
+            messageIn:         parsed.messageIn,
+            messageOut:        parsed.messageOut,
+          }
+
+          res.write(`event: analytics\ndata: ${JSON.stringify(event)}\n\n`)
+          flush()
+        } catch { /* skip failed full fetch */ }
+      }
+    } catch { /* skip failed poll */ }
+  }, POLL_INTERVAL_MS)
+
+  // Heartbeat to keep connection alive
+  const hbTimer = setInterval(() => {
+    if (closed || res.writableEnded) { clearInterval(pollTimer); clearInterval(hbTimer); return }
+    res.write('event: heartbeat\ndata: {}\n\n')
+    flush()
+  }, HEARTBEAT_MS)
 }
